@@ -1,0 +1,13 @@
+keyword,label
+_silence_,0
+_unknown_,1
+down,2
+go,3
+left,4
+no,5
+off,6
+on,7
+right,8
+stop,9
+up,10
+yes,11
