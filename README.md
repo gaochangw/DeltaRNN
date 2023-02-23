@@ -1,4 +1,4 @@
-# DeltaRNN
+# DeltaRNN - Exploiting Temporal Sparsity in GRU & LSTM
 This repo mainly contains:
 - Training code of DeltaGRU & DeltaLSTM using the [Google Speech Command Dataset V2](https://arxiv.org/abs/1804.03209)
 
