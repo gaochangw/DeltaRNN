@@ -59,7 +59,7 @@ python main.py --dataset gscdv2 --step retrain  --epochs_retrain 10 --thx 0.1 --
 
 #  Reference
 If you find this repository helpful, please cite our work.
-- DeltaLSTM related work:
+- [TNNLS 2022] Spartus: A 9.4 TOp/s FPGA-Based LSTM Accelerator Exploiting Spatio-Temporal Sparsity
 ```
 @ARTICLE{Gao2022Spartus,
   author={Gao, Chang and Delbruck, Tobi and Liu, Shih-Chii},
@@ -71,7 +71,7 @@ If you find this repository helpful, please cite our work.
   pages={1-15},
   doi={10.1109/TNNLS.2022.3180209}}
 ```
-- DeltaGRU related work:
+- [FPGA 2018] DeltaRNN: A Power-Efficient Recurrent Neural Network Accelerator
 ```
 @inproceedings{Gao2018DeltaRNN,
   author = {Gao, Chang and Neil, Daniel and Ceolini, Enea and Liu, Shih-Chii and Delbruck, Tobi},
@@ -91,7 +91,7 @@ If you find this repository helpful, please cite our work.
   series = {FPGA '18}
 }
 ```
-
+- [JETCAS 2020] EdgeDRNN: Recurrent Neural Network Accelerator for Edge Inference (AICAS 2020 Best Paper)
 ```
 @ARTICLE{Gao2020EdgeDRNN,
   author={Gao, Chang and Rios-Navarro, Antonio and Chen, Xi and Liu, Shih-Chii and Delbruck, Tobi},
