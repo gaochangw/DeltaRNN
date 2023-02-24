@@ -49,14 +49,14 @@ pip install soundfile
 
 #  DeltaRNN Training
 Please first download the training set [speech_commands_v0.02](http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz) and test set [speech_commands_test_set_v0.02](http://download.tensorflow.org/data/speech_commands_test_set_v0.02.tar.gz).
--In Ubuntu, please ensure the dataset is place at:
+- In Ubuntu, please ensure the dataset is place at:
 ```
 sudo mkdir /DATA
 sudo chmod 777 -R /DATA
 /DATA/speech_commands_v0.02
 /DATA/speech_commands_test_set_v0.02
 ```
--DeltaRNNs can be trained from scratch (randomly initialized parameters) or by following a pretrain(GRU/LSTM)-retrain(DeltaGRU/DeltaLSTM) scheme.
+- DeltaRNNs can be trained from scratch (randomly initialized parameters) or by following a pretrain(GRU/LSTM)-retrain(DeltaGRU/DeltaLSTM) scheme.
 Example (please run the commands line by line):
 ```
 python main.py --dataset gscdv2 --step prepare
