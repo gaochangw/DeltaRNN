@@ -48,8 +48,15 @@ pip install soundfile
 ```
 
 #  DeltaRNN Training
+In Ubuntu, please ensure the dataset is place at:
+```
+sudo mkdir /DATA
+sudo chmod 777 -R /DATA
+/DATA/speech_commands_v0.02
+/DATA/speech_commands_test_set_v0.02
+```
 DeltaRNNs can be trained from scratch (randomly initialized parameters) or by following a pretrain(GRU/LSTM)-retrain(DeltaGRU/DeltaLSTM) scheme.
-Example:
+Example (please run the commands line by line):
 ```
 python main.py --dataset gscdv2 --step prepare
 python main.py --dataset gscdv2 --step feature
