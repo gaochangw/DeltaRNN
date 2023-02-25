@@ -5,6 +5,7 @@ import torch.nn as nn
 from networks.layers.deltagru import DeltaGRU
 from utils import util
 from networks.layers.deltalstm import DeltaLSTM
+from networks.layers.deltalstm3 import DeltaLSTM3
 
 
 class Model(nn.Module):
@@ -38,6 +39,30 @@ class Model(nn.Module):
                                  use_hardsigmoid=self.use_hardsigmoid,
                                  debug=self.debug
                                  )
+        elif self.rnn_type == 'LSTM3':
+            proj.additem("rnn_layer", "DeltaLSTM3")
+            self.rnn = DeltaLSTM3(input_size=self.inp_size,
+                                  hidden_size=self.rnn_size,
+                                  num_layers=self.rnn_layers,
+                                  thx=self.thx,
+                                  thh=self.thh,
+                                  # dropout=self.dropout
+                                  qa=self.qa,
+                                  aqi=self.aqi,
+                                  aqf=self.aqf,
+                                  qw=self.qw,
+                                  wqi=self.wqi,
+                                  wqf=self.wqf,
+                                  nqi=self.nqi,
+                                  nqf=self.nqf,
+                                  # qg=self.qg,
+                                  # gqi=self.gqi,
+                                  # gqf=self.gqf,
+                                  bw_acc=self.bw_acc,
+                                  use_hardtanh=self.use_hardtanh,
+                                  use_hardsigmoid=self.use_hardsigmoid,
+                                  debug=self.debug
+                                  )
         elif self.rnn_type == 'GRU':
             proj.additem("rnn_layer", "DeltaGRU")
             self.rnn = DeltaGRU(input_size=self.inp_size,

@@ -104,7 +104,7 @@ class Model(nn.Module):
             if 'cl' in name and self.qcw:
                 param.data = util.quantize_tensor(param.data, self.cwqi, self.cwqf, self.qcw)
                 print("::: %s quantized as Q%d.%d" % (name, self.cwqi, self.cwqf))
-            else:
+            elif self.qw:
                 param.data = util.quantize_tensor(param.data, self.wqi, self.wqf, self.qw)
                 print("::: %s quantized as Q%d.%d" % (name, self.wqi, self.wqf))
 
