@@ -97,7 +97,7 @@ class GSCDDataset(data.Dataset):
             self.flags = torch.tensor(self.flags).long()
 
         # Update arguments
-        proj.additem('inp_size', self.num_features)
+        proj.additem('input_size', self.num_features)
         proj.additem('num_classes', self.num_classes)
 
     def __len__(self):

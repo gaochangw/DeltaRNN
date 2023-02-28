@@ -60,7 +60,7 @@ class DeltaGRU(nn.GRU):
 
     def set_debug(self, value):
         setattr(self, "debug", value)
-        self.dict_debug = {
+        self.statistics = {
             "num_dx_zeros": 0,
             "num_dx_numel": 0,
             "num_dh_zeros": 0,
@@ -74,13 +74,12 @@ class DeltaGRU(nn.GRU):
             else:
                 variable = np.squeeze(np.asarray(x))
             variable_name = '_'.join(['l' + str(i_layer), name])
-            if variable_name not in self.dict_debug.keys():
-                self.dict_debug[variable_name] = []
-            self.dict_debug[variable_name].append(variable)
+            if variable_name not in self.statistics.keys():
+                self.statistics[variable_name] = []
+            self.statistics[variable_name].append(variable)
 
-    def init_weight(self):
+    def reset_parameters(self):
         for name, param in self.named_parameters():
-            print('::: Initializing Parameters: ', name)
             if 'l0' in name:
                 if 'weight_ih' in name:
                     nn.init.xavier_uniform_(param[:self.hidden_size, :])
@@ -98,6 +97,16 @@ class DeltaGRU(nn.GRU):
             if 'bias' in name:
                 nn.init.constant_(param, 0)
         print("--------------------------------------------------------------------")
+
+    def get_temporal_sparsity(self):
+        temporal_sparsity = {}
+        if self.debug:
+            temporal_sparsity["SP_T_DX"] = float(self.statistics["num_dx_zeros"] / self.statistics["num_dx_numel"])
+            temporal_sparsity["SP_T_DH"] = float(self.statistics["num_dh_zeros"] / self.statistics["num_dh_numel"])
+            temporal_sparsity["SP_T_DV"] = float((self.statistics["num_dx_zeros"] + self.statistics["num_dh_zeros"]) /
+                                                 (self.statistics["num_dx_numel"] + self.statistics["num_dh_numel"]))
+        self.statistics.update(temporal_sparsity)
+        return temporal_sparsity
 
     def process_inputs(self, x: Tensor, qa: int, x_p_0: Tensor = None, h_0: Tensor = None, h_p_0: Tensor = None,
                        dm_ch_0: Tensor = None, dm_0: Tensor = None):
@@ -211,10 +220,10 @@ class DeltaGRU(nn.GRU):
             if self.debug:
                 zero_mask_delta_x = torch.as_tensor(delta_x == 0, dtype=x.dtype)
                 zero_mask_delta_h = torch.as_tensor(delta_h == 0, dtype=x.dtype)
-                self.dict_debug["num_dx_zeros"] += torch.sum(zero_mask_delta_x)
-                self.dict_debug["num_dh_zeros"] += torch.sum(zero_mask_delta_h)
-                self.dict_debug["num_dx_numel"] += torch.numel(delta_x)
-                self.dict_debug["num_dh_numel"] += torch.numel(delta_h)
+                self.statistics["num_dx_zeros"] += torch.sum(zero_mask_delta_x)
+                self.statistics["num_dh_zeros"] += torch.sum(zero_mask_delta_h)
+                self.statistics["num_dx_numel"] += torch.numel(delta_x)
+                self.statistics["num_dh_numel"] += torch.numel(delta_h)
 
             # Update previous state vectors memory on indices that had above-threshold change
             x_p = torch.where(delta_x_abs >= self.th_x, x, x_p)
@@ -296,9 +305,9 @@ class DeltaGRU(nn.GRU):
 
         # Debug
         if self.debug:
-            self.dict_debug["sparsity_dx"] = float(self.dict_debug["num_dx_zeros"] / self.dict_debug["num_dx_numel"])
-            self.dict_debug["sparsity_dh"] = float(self.dict_debug["num_dh_zeros"] / self.dict_debug["num_dh_numel"])
-            self.dict_debug["sparsity_to"] = float((self.dict_debug["num_dx_zeros"] + self.dict_debug["num_dh_zeros"]) /
-                                                   (self.dict_debug["num_dx_numel"] + self.dict_debug["num_dh_numel"]))
+            self.statistics["sparsity_dx"] = float(self.statistics["num_dx_zeros"] / self.statistics["num_dx_numel"])
+            self.statistics["sparsity_dh"] = float(self.statistics["num_dh_zeros"] / self.statistics["num_dh_numel"])
+            self.statistics["sparsity_to"] = float((self.statistics["num_dx_zeros"] + self.statistics["num_dh_zeros"]) /
+                                                   (self.statistics["num_dx_numel"] + self.statistics["num_dh_numel"]))
 
         return x, (x_p_n, h_n, h_p_n, dm_nm_n, dm_n), reg

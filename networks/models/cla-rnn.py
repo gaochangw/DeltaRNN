@@ -2,23 +2,45 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from project import Project
-from utils import util
-
+import networks.nn_util as util
+from thop import profile
+from thop import clever_format
 
 class Model(nn.Module):
     def __init__(self, proj: Project):
         super(Model, self).__init__()
         # Load Hyperparameters
-        for k, v in proj.hparams.items():
-            setattr(self, k, v)
+        self.input_size = proj.input_size
+        self.batch_size = proj.batch_size
+        self.rnn_type = proj.rnn_type
+        self.rnn_size = proj.rnn_size
+        self.rnn_layers = proj.rnn_layers
+        self.rnn_dropout = proj.rnn_dropout
+        self.fc_extra_size = proj.fc_extra_size
+        self.fc_dropout = proj.fc_dropout
+        self.num_classes = proj.num_classes
+        self.qa = proj.qa
+        self.aqi = proj.aqi
+        self.aqf = proj.aqf
+        self.qw = proj.qw
+        self.wqi = proj.wqi
+        self.wqf = proj.wqf
+        self.bw_acc = proj.bw_acc
+        self.qc = proj.qc
+        self.cqi = proj.cqi
+        self.cqf = proj.cqf
+        self.qcw = proj.qcw
+        self.cwqi = proj.cwqi
+        self.cwqf = proj.cwqf
+        self.debug = proj.debug
 
         # Debug Dictionary
-        self.dict_debug = {} if self.debug else None
+        self.statistics = {}
 
         # Instantiate RNN layers
         if self.rnn_type == 'LSTM':
             proj.additem("rnn_layer", "LSTM")
-            self.rnn = nn.LSTM(input_size=self.inp_size,
+            self.rnn = nn.LSTM(input_size=self.input_size,
                                hidden_size=self.rnn_size,
                                num_layers=self.rnn_layers,
                                bias=True,
@@ -26,7 +48,7 @@ class Model(nn.Module):
                                dropout=self.rnn_dropout)
         elif self.rnn_type == 'GRU':
             proj.additem("rnn_layer", "GRU")
-            self.rnn = nn.GRU(input_size=self.inp_size,
+            self.rnn = nn.GRU(input_size=self.input_size,
                               hidden_size=self.rnn_size,
                               num_layers=self.rnn_layers,
                               bias=True,
@@ -50,9 +72,9 @@ class Model(nn.Module):
         self.cl = nn.Linear(in_features=cl_in_features, out_features=self.num_classes, bias=True)
 
         # Initialize Parameters
-        self.init_weight()
+        self.reset_parameters()
 
-    def init_weight(self):
+    def reset_parameters(self):
         # Initialize LSTM
         for name, param in self.rnn.named_parameters():
             print('::: Initializing Parameters: ', name)
@@ -91,6 +113,24 @@ class Model(nn.Module):
                 nn.init.xavier_uniform_(param)
             if 'bias' in name:
                 nn.init.constant_(param, 0)
+
+    def get_model_size(self):
+        # device = next(self.parameters()).device
+        # seq_len = 1
+        # input = torch.randn(seq_len, self.batch_size, self.input_size, device=device)
+        # macs, params = profile(self, inputs=(input,))
+        # macs, params = clever_format([macs, params], "%.3f")
+        # self.statistics['MACS'] = macs
+        # self.statistics['PARAMS'] = params
+        self.statistics['NUM_PARAMS'] = 0
+        for name, param in self.named_parameters():
+            self.statistics['NUM_PARAMS'] += param.data.numel()
+        return self.statistics['NUM_PARAMS']
+
+    def get_sparsity(self):
+        for name, module in self._modules.items():
+            self.statistics['SP_W_' + name.upper()] = util.get_layer_sparsity(module)
+        return self.statistics
 
     def quantize_weight(self, stat):
         for name, param in self.named_parameters():

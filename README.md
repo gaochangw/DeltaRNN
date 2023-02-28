@@ -44,7 +44,7 @@ conda activate pt
 
 Install other required packages with pip:
 ```
-pip install soundfile
+pip install soundfile thop
 ```
 
 #  DeltaRNN Training

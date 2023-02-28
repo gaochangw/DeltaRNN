@@ -684,7 +684,7 @@ def gen_sim_file(file_path, pdict):
         f.close()
 
 
-def gen_clib(file_path, file_name, pdict, num_layer=None, inp_size=None, hid_size=None):
+def gen_clib(file_path, file_name, pdict, num_layer=None, input_size=None, hid_size=None):
     """
     Generate C Library for NN parameters
 
@@ -825,8 +825,8 @@ def gen_clib(file_path, file_name, pdict, num_layer=None, inp_size=None, hid_siz
             f.write('const %s %s[' % (nn_var_type, key) + key.upper() + '_MAT_SIZE] = {\n')
             if num_layer is not None:
                 f_h.write('#define ' + key.upper() + '_NUM_LAYERS %d\n' % num_layer)
-            if inp_size is not None:
-                f_h.write('#define ' + key.upper() + '_INP_SIZE %d\n' % inp_size)
+            if input_size is not None:
+                f_h.write('#define ' + key.upper() + '_INP_SIZE %d\n' % input_size)
             if hid_size is not None:
                 f_h.write('#define ' + key.upper() + '_HID_SIZE %d\n' % hid_size)
             # if 'rnn' in key:

@@ -1,7 +1,9 @@
 import torch
 from torch import Tensor
+import torch.nn as nn
 from torch.autograd.function import Function
 import torch.nn.functional as F
+
 
 class GradPreserveFloor(Function):
     @staticmethod
@@ -63,3 +65,14 @@ def hardsigmoid(x):
     x = F.threshold(-x, -1.0, -1.0)
     x = F.threshold(-x, 0.0, 0.0)
     return x
+
+
+def get_layer_sparsity(x: nn.Module):
+    num_nonzeros = 0
+    num_elements = 0
+    for name, param in x.named_parameters():
+        print(name)
+    for name, param in x.named_parameters():
+        num_nonzeros += len(torch.nonzero(param.data))
+        num_elements += param.data.nelement()
+    return float(1 - num_nonzeros/num_elements)

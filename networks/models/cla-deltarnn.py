@@ -2,8 +2,8 @@ import numpy as np
 import torch
 from torch import Tensor
 import torch.nn as nn
+import networks.nn_util as util
 from networks.layers.deltagru import DeltaGRU
-from utils import util
 from networks.layers.deltalstm import DeltaLSTM
 from networks.layers.deltalstm3 import DeltaLSTM3
 
@@ -12,16 +12,43 @@ class Model(nn.Module):
     def __init__(self, proj):
         super(Model, self).__init__()
         # Load Hyperparameters
-        for k, v in proj.hparams.items():
-            setattr(self, k, v)
+        self.input_size = proj.input_size
+        self.batch_size = proj.batch_size
+        self.rnn_type = proj.rnn_type
+        self.rnn_size = proj.rnn_size
+        self.rnn_layers = proj.rnn_layers
+        self.rnn_dropout = proj.rnn_dropout
+        self.thx = proj.thx
+        self.thh = proj.thh
+        self.use_hardtanh = proj.use_hardtanh
+        self.use_hardsigmoid = proj.use_hardsigmoid
+        self.fc_extra_size = proj.fc_extra_size
+        self.fc_dropout = proj.fc_dropout
+        self.num_classes = proj.num_classes
+        self.qa = proj.qa
+        self.aqi = proj.aqi
+        self.aqf = proj.aqf
+        self.qw = proj.qw
+        self.wqi = proj.wqi
+        self.wqf = proj.wqf
+        self.nqi = proj.nqi
+        self.nqf = proj.nqf
+        self.bw_acc = proj.bw_acc
+        self.qc = proj.qc
+        self.cqi = proj.cqi
+        self.cqf = proj.cqf
+        self.qcw = proj.qcw
+        self.cwqi = proj.cwqi
+        self.cwqf = proj.cwqf
+        self.debug = proj.debug
 
-        # Debug Dictionary
-        self.dict_debug = {} if self.debug else None
+        # Statistics Dictionary
+        self.statistics = {}
 
         # Instantiate RNN layers
         if self.rnn_type == 'LSTM':
             proj.additem("rnn_layer", "DeltaLSTM")
-            self.rnn = DeltaLSTM(input_size=self.inp_size,
+            self.rnn = DeltaLSTM(input_size=self.input_size,
                                  hidden_size=self.rnn_size,
                                  num_layers=self.rnn_layers,
                                  thx=self.thx,
@@ -41,7 +68,7 @@ class Model(nn.Module):
                                  )
         elif self.rnn_type == 'LSTM3':
             proj.additem("rnn_layer", "DeltaLSTM3")
-            self.rnn = DeltaLSTM3(input_size=self.inp_size,
+            self.rnn = DeltaLSTM3(input_size=self.input_size,
                                   hidden_size=self.rnn_size,
                                   num_layers=self.rnn_layers,
                                   thx=self.thx,
@@ -65,7 +92,7 @@ class Model(nn.Module):
                                   )
         elif self.rnn_type == 'GRU':
             proj.additem("rnn_layer", "DeltaGRU")
-            self.rnn = DeltaGRU(input_size=self.inp_size,
+            self.rnn = DeltaGRU(input_size=self.input_size,
                                 hidden_size=self.rnn_size,
                                 num_layers=self.rnn_layers,
                                 thx=self.thx,
@@ -101,15 +128,15 @@ class Model(nn.Module):
         self.cl = nn.Linear(in_features=cl_in_features, out_features=self.num_classes, bias=True)
 
         # Initialize Parameters
-        self.init_weight()
+        self.reset_parameters()
 
     def set_debug(self, value):
         setattr(self, "debug", value)
         self.rnn.set_debug(value)
 
-    def init_weight(self):
+    def reset_parameters(self):
         # Initialize DeltaLSTM
-        self.rnn.init_weight()
+        self.rnn.reset_parameters()
 
         # Initialize FC Extra
         if hasattr(self, 'fc_extra'):
@@ -157,13 +184,33 @@ class Model(nn.Module):
         pretrained_model_state_dict = torch.load(path, map_location=model_location)
         self.load_state_dict(pretrained_model_state_dict)
 
+    def get_model_size(self):
+        # device = next(self.parameters()).device
+        # seq_len = 1
+        # input = torch.randn(seq_len, self.batch_size, self.input_size, device=device)
+        # macs, params = profile(self, inputs=(input,))
+        # macs, params = clever_format([macs, params], "%.3f")
+        # self.statistics['MACS'] = macs
+        # self.statistics['PARAMS'] = params
+        self.statistics['NUM_PARAMS'] = 0
+        for name, param in self.named_parameters():
+            self.statistics['NUM_PARAMS'] += param.data.numel()
+        return self.statistics['NUM_PARAMS']
+
+    def get_sparsity(self):
+        for name, module in self._modules.items():
+            self.statistics['SP_W_' + name.upper()] = util.get_layer_sparsity(module)
+        temporal_sparsity = self.rnn.get_temporal_sparsity()
+        self.statistics.update(temporal_sparsity)
+        return self.statistics
+
     def forward(self, input: Tensor, x_p_0: Tensor = None, h_0: Tensor = None, h_p_0: Tensor = None,
                 c_0: Tensor = None, dm_0: Tensor = None):
         # Flatten Parameters
         self.rnn.flatten_parameters()
 
         # Overhead
-        self.dict_debug = {}  # Reset Debug Dict
+        self.statistics = {}  # Reset Debug Dict
         qa = 0 if self.training else self.qa
 
         # RNN Forward
@@ -183,11 +230,11 @@ class Model(nn.Module):
         output = qout_fc
 
         if self.debug:
-            self.dict_debug['fc_final_inp'] = rnn_output
-            self.dict_debug['fc_final_out'] = out_fc
-            self.dict_debug['fc_final_qout'] = qout_fc
-            self.dict_debug['fc_final_out_acc'] = out_fc_acc
-            self.dict_debug.update(self.rnn.dict_debug)
+            self.statistics['fc_final_inp'] = rnn_output
+            self.statistics['fc_final_out'] = out_fc
+            self.statistics['fc_final_qout'] = qout_fc
+            self.statistics['fc_final_out_acc'] = out_fc_acc
+            self.statistics.update(self.rnn.statistics)
 
         return output, reg
 

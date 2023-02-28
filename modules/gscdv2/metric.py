@@ -238,26 +238,27 @@ class Meter:
         #     TN = TN[1:]
 
         # Sensitivity, hit rate, recall, or true positive rate
-        dict_stat['tpr'] = TP / (TP + FN)
+        dict_stat['TPR'] = TP / (TP + FN)
         # False negative rate
-        dict_stat['fnr'] = FN / (TP + FN)
+        dict_stat['FHR'] = FN / (TP + FN)
         # print(dict_stat)
         # Specificity or true negative rate
-        dict_stat['tnr'] = TN / (TN + FP)
+        dict_stat['TNR'] = TN / (TN + FP)
         # Precision or positive predictive value
-        dict_stat['ppv'] = TP / (TP + FP)
+        dict_stat['PPV'] = TP / (TP + FP)
         # Negative predictive value
-        dict_stat['npv'] = TN / (TN + FN)
+        dict_stat['NPV'] = TN / (TN + FN)
         # Fall out or false positive rate
-        dict_stat['fpr'] = FP / (FP + TN)
+        dict_stat['FPR'] = FP / (FP + TN)
 
         # False discovery rate
-        dict_stat['fdr'] = FP / (TP + FP)
+        dict_stat['FDR'] = FP / (TP + FP)
         # Overall accuracy
-        dict_stat['acc'] = (TP + TN) / (TP + FP + FN + TN)
+        dict_stat['ACC'] = (TP + TN) / (TP + FP + FN + TN)
         # Micro F1 Score
-        dict_stat['f1_score_micro'] = f1_score(y_true, y_pred, average='micro')
-        dict_stat['cnf_matrix'] = cnf_matrix
+        dict_stat['F1_SCORE_MICRO'] = f1_score(y_true, y_pred, average='micro')
+        dict_stat['F1_SCORE_MACRO'] = f1_score(y_true, y_pred, average='macro')
+        dict_stat['CONFUSION_MATRIX'] = cnf_matrix
 
         # Clear Data Buffers
         self.outputs = []

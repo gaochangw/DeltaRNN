@@ -1,5 +1,7 @@
 import os
 import warnings
+
+import numpy as np
 import torch
 import pandas as pd
 
@@ -132,7 +134,7 @@ def gen_model_id(proj):
 
     # Architecture Description
     def gen_net_arch(model_name):
-        str_net_arch = "_I_" + f"{proj.inp_size:d}" \
+        str_net_arch = "_I_" + f"{proj.input_size:d}" \
                        + '_L_' + f"{proj.rnn_layers:d}" \
                        + '_H_' + f"{proj.rnn_size:d}" \
                        + '_M_' + model_name
@@ -282,26 +284,26 @@ def write_log(args, logger, tb_writer, model_id, train_stat, val_stat, test_stat
                                          'L-Val': val_stat['loss']}, epoch)
 
 
-def save_best_model(proj, best_metric, logger, epoch, dev_stat, score_val):
+def save_best_model(proj: Project, best_metric, logger, epoch, dev_stat, score_val, test_stat):
     if proj.save_every_epoch:  # Save every epoch
         best_metric = 0
         best_epoch = epoch
         logger.write_log(append=False, logfile=proj.logfile_best)
-        torch.save(proj.net.state_dict(), proj.save_file)
+        torch.save(proj.net.state_dict(), proj.save_file)  # Save best PyTorch Model
+        np.save(proj.save_file.replace('pt', 'npy'), test_stat['CONFUSION_MATRIX'])
         print('>>> saving best model from epoch %d to %s' % (epoch, proj.save_file))
     else:
         if score_val:
-            if epoch == 0 or dev_stat['f1_score_micro'] > best_metric:
-                best_metric = dev_stat['f1_score_micro']
-                best_cnf = dev_stat['cnf_matrix']
-                # np.save('./cnf_matrix.npy', best_cnf)
+            if epoch == 0 or dev_stat['F1_SCORE_MICRO'] > best_metric:
+                best_metric = dev_stat['F1_SCORE_MICRO']
+                np.save(proj.save_file.replace('pt', 'npy'), dev_stat['CONFUSION_MATRIX'])
                 logger.write_log(append=False, logfile=proj.logfile_best)
                 torch.save(proj.net.state_dict(), proj.save_file)
                 best_epoch = epoch
                 print('>>> saving best model from epoch %d to %s' % (epoch, proj.save_file))
         else:
-            if epoch == 0 or dev_stat['loss'] < best_metric:
-                best_metric = dev_stat['loss']
+            if epoch == 0 or dev_stat['LOSS'] < best_metric:
+                best_metric = dev_stat['LOSS']
                 torch.save(proj.net.state_dict(), proj.save_file)
                 logger.write_log(append=False, logfile=proj.logfile_best)
                 best_epoch = epoch
@@ -313,29 +315,34 @@ def save_best_model(proj, best_metric, logger, epoch, dev_stat, score_val):
 def print_log(proj: Project, log_stat, train_stat, val_stat, test_stat, **kwargs):
     str_print = f"Epoch: {log_stat['EPOCH'] + 1:3d} of {log_stat['N_EPOCH']:3d} " \
                 f"| Time: {log_stat['TIME_CURR']:s} " \
-                f"| LR: {log_stat['LR_CURR']:1.5f} " \
-                f"| Sp.W {log_stat['SP_W_CLA'] * 100:3.2f}%% " \
-                f"| Sp.Wfc {log_stat['SP_W_FC'] * 100:3.2f}%% |\n"
+                f"| LR: {log_stat['LR_CURR']:1.5f} "
+    for k, v in log_stat.items():
+        if 'SP_' in k:
+            str_print += "| " + k + f" {v * 100:3.2f}% "
+    str_print += '\n'
+
     if train_stat is not None:
         str_print += f"    | Train-Loss: {log_stat['TRAIN_LOSS']:4.3f} " \
                      f"| Train-Reg: {log_stat['TRAIN_REG']:4.2f} |\n"
-    if val_stat is not None:
+    # Validation
+    if 'VAL_LOSS' in log_stat.keys():
         str_print += f"    | Val-Loss: {log_stat['VAL_LOSS']:4.3f}"
-        if proj.score_val:
-            str_print += f" | Val-ACC: {log_stat['VAL_F1_SCORE_MICRO'] * 100:3.3f}% "
-            if 'Delta' in proj.rnn_layer:
-                str_print += f"| Val-Sparsity_DX: {log_stat['VAL_SPARSITY_DX'] * 100:3.2f}% " \
-                             f"| Val-Sparsity_DH: {log_stat['VAL_SPARSITY_DH'] * 100:3.2f}% " \
-                             f"| Val-Sparsity_TO: {log_stat['VAL_SPARSITY_TO'] * 100:3.2f}% |"
-        str_print += '\n'
-    if test_stat is not None:
+    if 'VAL_F1_SCORE_MICRO' in log_stat.keys():
+        str_print += f" | Val-ACC: {log_stat['VAL_F1_SCORE_MICRO'] * 100:3.3f}% "
+    if 'VAL_SP_T' in log_stat.keys():
+        str_print += f"| Val-SP_T_DX: {log_stat['VAL_SP_T_DX'] * 100:3.2f}% " \
+                     f"| Val-SP_T_DH: {log_stat['VAL_SP_T_DH'] * 100:3.2f}% " \
+                     f"| Val-SP_T_DV: {log_stat['VAL_SP_T_DV'] * 100:3.2f}% |"
+    str_print += '\n'
+    # Test
+    if 'TEST_LOSS' in log_stat.keys():
         str_print += f"    | Test-Loss: {log_stat['TEST_LOSS']:4.3f}"
-        if proj.score_test:
-            str_print += f" | Test-ACC: {log_stat['TEST_F1_SCORE_MICRO'] * 100:3.3f}% "
-            if 'Delta' in proj.rnn_layer:
-                str_print += f"| Test-Sparsity_DX: {log_stat['TEST_SPARSITY_DX'] * 100:3.2f}% " \
-                             f"| Test-Sparsity_DH: {log_stat['TEST_SPARSITY_DH'] * 100:3.2f}% " \
-                             f"| Test-Sparsity_TO: {log_stat['TEST_SPARSITY_TO'] * 100:3.2f}% |"
+    if 'TEST_F1_SCORE_MICRO' in log_stat.keys():
+        str_print += f" | Test-ACC: {log_stat['TEST_F1_SCORE_MICRO'] * 100:3.3f}% "
+    if 'TEST_SP_T' in log_stat.keys():
+        str_print += f"| Test-SP_T_DX: {log_stat['TEST_SP_T_DX'] * 100:3.2f}% " \
+                     f"| Test-SP_T_DH: {log_stat['TEST_SP_T_DH'] * 100:3.2f}% " \
+                     f"| Test-SP_T_DV: {log_stat['TEST_SP_T_DV'] * 100:3.2f}% |"
         str_print += '\n'
     print(str_print)
     # Other Info
@@ -360,7 +367,7 @@ def gen_log_stat(proj: Project, epoch, start_time, train_stat=None, val_stat=Non
                 'N_EPOCH': proj.n_epochs,
                 'TIME_CURR': time_curr,
                 'BATCH_SIZE': proj.batch_size,
-                'N_PARAM': proj.n_param,
+                'NUM_PARAMS': proj.num_params,
                 'LOSS_FUNC': proj.loss,
                 'OPT': proj.opt,
                 'LR_CURR': lr_curr,
@@ -381,25 +388,26 @@ def gen_log_stat(proj: Project, epoch, start_time, train_stat=None, val_stat=Non
         log_stat = {**log_stat, **test_stat_log}
 
     # Evaluate Classifier Weight Sparsity
-    if proj.model_name != 'FC':
-        n_nonzero_weight_elem = 0
-        n_weight_elem = 0
-        for name, param in proj.net.named_parameters():
-            if 'rnn' in name:
-                if 'weight' in name:
-                    n_nonzero_weight_elem += len(torch.nonzero(param.data))
-                    n_weight_elem += param.data.nelement()
-        log_stat['SP_W_CLA'] = 1 - (n_nonzero_weight_elem / n_weight_elem)
+    log_stat.update(proj.net.get_sparsity())
+    # if proj.model_name != 'FC':
+    #     n_nonzero_weight_elem = 0
+    #     n_weight_elem = 0
+    #     for name, param in proj.net.named_parameters():
+    #         if 'rnn' in name:
+    #             if 'weight' in name:
+    #                 n_nonzero_weight_elem += len(torch.nonzero(param.data))
+    #                 n_weight_elem += param.data.nelement()
+    #     log_stat['SP_W_CLA'] = 1 - (n_nonzero_weight_elem / n_weight_elem)
 
     # Evaluate FC Extra Layer Weight Sparsity
-    log_stat['SP_W_FC'] = 0
-    if proj.fc_extra_size:
-        n_nonzero_weight_elem = 0
-        n_weight_elem = 0
-        for name, param in proj.net.named_parameters():
-            if 'fc_extra' in name:
-                if 'weight' in name:
-                    n_nonzero_weight_elem += len(torch.nonzero(param.data))
-                    n_weight_elem += param.data.nelement()
-        log_stat['SP_W_FC'] = 1 - (n_nonzero_weight_elem / n_weight_elem)
+    # log_stat['SP_W_FC'] = 0
+    # if proj.fc_extra_size:
+    #     n_nonzero_weight_elem = 0
+    #     n_weight_elem = 0
+    #     for name, param in proj.net.named_parameters():
+    #         if 'fc_extra' in name:
+    #             if 'weight' in name:
+    #                 n_nonzero_weight_elem += len(torch.nonzero(param.data))
+    #                 n_weight_elem += param.data.nelement()
+    #     log_stat['SP_W_FC'] = 1 - (n_nonzero_weight_elem / n_weight_elem)
     return log_stat

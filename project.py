@@ -21,6 +21,7 @@ from torch import optim
 from torch.nn import CTCLoss
 from tqdm import tqdm
 from utils import pandaslogger, util
+from thop import profile
 
 
 class Project:
@@ -41,7 +42,7 @@ class Project:
         # Define abbreviations of hparams
         self.args_to_abb = {
             'seed': 'S',
-            'inp_size': 'I',
+            'input_size': 'I',
             'rnn_size': 'H',
             'rnn_type': 'T',
             'rnn_layers': 'L',
@@ -190,7 +191,7 @@ class Project:
         args_hparam_t.add_argument('--seed', default=0, type=int, help='Random seed.')
         args_hparam_t.add_argument('--epochs_pretrain', default=50, type=int, help='Number of epochs to train for.')
         args_hparam_t.add_argument('--epochs_retrain', default=50, type=int, help='Number of epochs to train for.')
-        args_hparam_t.add_argument('--batch_size', default=512, type=int, help='Batch size.')
+        args_hparam_t.add_argument('--batch_size', default=64, type=int, help='Batch size.')
         args_hparam_t.add_argument('--batch_size_eval', default=256, type=int,
                                    help='Batch size for test. Use larger values for faster test.')
         args_hparam_t.add_argument('--opt', default='ADAMW', help='Which optimizer to use (ADAM or SGD)')
@@ -208,19 +209,19 @@ class Project:
                                    help='The number of timesteps for RNN to look at')
         args_hparam_t.add_argument('--pred_size', default=1, type=int,
                                    help='The number of timesteps to predict in the future')
-        # Model Hyperparameters
-        args_hparam_m = parser.add_argument_group("Model Hyperparameters")
-        args_hparam_m.add_argument('--model_pretrain', default='cla-rnn', help='Network model for pretrain')
-        args_hparam_m.add_argument('--model_retrain', default='cla-deltarnn', help='Network model for retrain')
-        args_hparam_m.add_argument('--rnn_type', default='GRU', help='RNN layer type')
-        args_hparam_m.add_argument('--rnn_layers', default=1, type=int, help='Number of RNN nnlayers')
-        args_hparam_m.add_argument('--rnn_size', default=64, type=int,
+        # RNN Model Hyperparameters
+        args_hparam_rnn = parser.add_argument_group("Model Hyperparameters")
+        args_hparam_rnn.add_argument('--model_pretrain', default='cla-rnn', help='Network model for pretrain')
+        args_hparam_rnn.add_argument('--model_retrain', default='cla-deltarnn', help='Network model for retrain')
+        args_hparam_rnn.add_argument('--rnn_type', default='GRU', help='RNN layer type')
+        args_hparam_rnn.add_argument('--rnn_layers', default=1, type=int, help='Number of RNN nnlayers')
+        args_hparam_rnn.add_argument('--rnn_size', default=64, type=int,
                                    help='RNN Hidden layer size (must be a multiple of num_pe, see modules/edgedrnn.py)')
-        args_hparam_m.add_argument('--rnn_dropout', default=0, type=float, help='RNN Hidden layer size')
-        args_hparam_m.add_argument('--fc_extra_size', default=0, type=float, help='RNN Hidden layer size')
-        args_hparam_m.add_argument('--fc_dropout', default=0, type=float, help='RNN Hidden layer size')
-        args_hparam_m.add_argument('--use_hardsigmoid', default=0, type=int, help='Use hardsigmoid')
-        args_hparam_m.add_argument('--use_hardtanh', default=0, type=int, help='Use hardtanh')
+        args_hparam_rnn.add_argument('--rnn_dropout', default=0, type=float, help='RNN Hidden layer size')
+        args_hparam_rnn.add_argument('--fc_extra_size', default=0, type=float, help='RNN Hidden layer size')
+        args_hparam_rnn.add_argument('--fc_dropout', default=0, type=float, help='RNN Hidden layer size')
+        args_hparam_rnn.add_argument('--use_hardsigmoid', default=0, type=int, help='Use hardsigmoid')
+        args_hparam_rnn.add_argument('--use_hardtanh', default=0, type=int, help='Use hardtanh')
         # Quantization
         args_hparam_q = parser.add_argument_group("Quantization Hyperparameters")
         args_hparam_q.add_argument('--qa', default=0, type=int, help='Quantize the activations')
@@ -337,14 +338,21 @@ class Project:
         else:
             net = self.net_pretrain.Model(self)  # Instantiate Pretrain Model
 
+        # Get parameter count
+        # n_param = count_net_params(net)
+        # self.additem("n_param", n_param)
+        # num_macs, num_params = net.get_model_size()
+        num_params = net.get_model_size()
+        print("::: Number of Parameters: ", num_params)
+        # print("::: Number of MACs: ", num_macs)
+        # self.additem("num_macs", num_macs)
+        self.additem("num_params", num_params)
+
         # Cast net to the target device
         net.to(self.device)
         self.additem("net", net)
 
-        # Get parameter count
-        n_param = count_net_params(net)
-        self.additem("n_param", n_param)
-        print("::: Number of Parameters: ", n_param)
+
         return net
 
     def build_criterion(self):
@@ -497,7 +505,7 @@ class Project:
             # Add basic stats
             stat = {'loss': epoch_loss, 'reg': epoch_regularizer, 'lr_criterion': epoch_loss}
             if self.net.debug:
-                stat.update(self.net.dict_debug)
+                stat.update(self.net.statistics)
             # Get DeltaRNN Stats
             # if "Delta" in self.rnn_type and self.drnn_stats:
 
@@ -622,9 +630,9 @@ class Project:
             meter = add_meter_data(meter, dict_meter_data)
 
         # Get network statistics
-        stat = {'loss': epoch_loss, 'reg': epoch_regularizer, 'net_out_min': net_out_min, 'net_out_max': net_out_max}
+        stat = {'LOSS': epoch_loss, 'REG': epoch_regularizer, 'NET_OUT_MIN': net_out_min, 'NET_OUT_MAX': net_out_max}
         if self.net.debug:
-            stat.update(self.net.dict_debug)
+            stat.update(self.net.statistics)
         stat = self.train_func.get_net_out_stat(self, stat, dict_meter_data)
         return meter, stat
 
@@ -694,7 +702,8 @@ class Project:
                                           logger=self.logger,
                                           epoch=epoch,
                                           dev_stat=dev_stat,
-                                          score_val=self.score_val)
+                                          score_val=self.score_val,
+                                          test_stat=test_stat)
 
             ###########################################################################################################
             # Learning Rate Schedule
