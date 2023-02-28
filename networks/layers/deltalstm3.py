@@ -404,12 +404,13 @@ class DeltaLSTM3(nn.LSTM):
 
     def set_debug(self, value):
         setattr(self, "debug", value)
-        self.dict_debug = {
+        statistics = {
             "num_dx_zeros": 0,
             "num_dx_numel": 0,
             "num_dh_zeros": 0,
             "num_dh_numel": 0
         }
+        setattr(self, "statistics", statistics)
 
     def add_to_debug(self, x, i_layer, name):
         if self.debug:
@@ -418,13 +419,12 @@ class DeltaLSTM3(nn.LSTM):
             else:
                 variable = np.squeeze(np.asarray(x))
             variable_name = '_'.join(['l' + str(i_layer), name])
-            if variable_name not in self.dict_debug.keys():
-                self.dict_debug[variable_name] = []
-            self.dict_debug[variable_name].append(variable)
+            if variable_name not in self.statistics.keys():
+                self.statistics[variable_name] = []
+            self.statistics[variable_name].append(variable)
 
-    def init_weight(self):
+    def reset_parameters(self):
         for name, param in self.named_parameters():
-            print('::: Initializing Parameters: ', name)
             if 'l0' in name:
                 if 'weight_ih' in name:
                     nn.init.xavier_uniform_(param[:self.hidden_size, :])
@@ -445,6 +445,16 @@ class DeltaLSTM3(nn.LSTM):
             if 'bias' in name:
                 nn.init.constant_(param, 0)
         print("--------------------------------------------------------------------")
+
+    def get_temporal_sparsity(self):
+        temporal_sparsity = {}
+        if self.debug:
+            temporal_sparsity["SP_T_DX"] = float(self.statistics["num_dx_zeros"] / self.statistics["num_dx_numel"])
+            temporal_sparsity["SP_T_DH"] = float(self.statistics["num_dh_zeros"] / self.statistics["num_dh_numel"])
+            temporal_sparsity["SP_T_DV"] = float((self.statistics["num_dx_zeros"] + self.statistics["num_dh_zeros"]) /
+                                                 (self.statistics["num_dx_numel"] + self.statistics["num_dh_numel"]))
+        self.statistics.update(temporal_sparsity)
+        return temporal_sparsity
 
     def process_inputs(self, x: Tensor, qa: int, x_p_0: Tensor = None, h_0: Tensor = None, h_p_0: Tensor = None,
                        c_0: Tensor = None, dm_0: Tensor = None):
@@ -528,23 +538,15 @@ class DeltaLSTM3(nn.LSTM):
             reg += reg_l
             
             if self.debug:
-                self.dict_debug["num_dx_zeros"] += dbl[0]
-                self.dict_debug["num_dh_zeros"] += dbl[1]
-                self.dict_debug["num_dx_numel"] += dbl[2]
-                self.dict_debug["num_dh_numel"] += dbl[3]
+                self.statistics["num_dx_zeros"] += dbl[0]
+                self.statistics["num_dh_zeros"] += dbl[1]
+                self.statistics["num_dx_numel"] += dbl[2]
+                self.statistics["num_dh_numel"] += dbl[3]
         
         x_p_n = t.stack(x_p_n)
         h_n = t.stack(h_n)
         h_p_n = t.stack(h_p_n)
         c_n = t.stack(c_n)
         dm_n = t.stack(dm_n)
-
-
-        # Debug
-        if self.debug:
-            self.dict_debug["sparsity_dx"] = float(self.dict_debug["num_dx_zeros"] / self.dict_debug["num_dx_numel"])
-            self.dict_debug["sparsity_dh"] = float(self.dict_debug["num_dh_zeros"] / self.dict_debug["num_dh_numel"])
-            self.dict_debug["sparsity_to"] = float((self.dict_debug["num_dx_zeros"] + self.dict_debug["num_dh_zeros"]) /
-                                                   (self.dict_debug["num_dx_numel"] + self.dict_debug["num_dh_numel"]))
 
         return x, (x_p_n, h_n, h_p_n, c_n, dm_n), reg
