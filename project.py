@@ -112,10 +112,13 @@ class Project:
         np.random.seed(self.seed)
         torch.manual_seed(self.seed)
         torch.cuda.manual_seed_all(self.seed)
+
         if level == 'soft':
             torch.use_deterministic_algorithms(mode=False)
+            torch.backends.cudnn.benchmark = True
         else:  # level == 'hard'
             torch.use_deterministic_algorithms(mode=True)
+            torch.backends.cudnn.benchmark = False
         torch.cuda.empty_cache()
         print("::: Are Deterministic Algorithms Enabled: ", torch.are_deterministic_algorithms_enabled())
         print("--------------------------------------------------------------------")
@@ -157,7 +160,7 @@ class Project:
         # Basic Setup
         args_basic = parser.add_argument_group("Basic Setup")
         args_basic.add_argument('--project_name', default='AMPRO', help='Useful for loggers like Comet')
-        args_basic.add_argument('--data_dir', default='/DATA', help='Useful for loggers like Comet')
+        args_basic.add_argument('--data_dir', default='/data', help='Useful for loggers like Comet')
         args_basic.add_argument('--dataset', default='gscdv2', help='Useful for loggers like Comet')
         args_basic.add_argument('--cfg_feat', default='feat_fft', help='Useful for loggers like Comet')
         args_basic.add_argument('--path_net_pretrain', default=None, help='Useful for loggers like Comet')

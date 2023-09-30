@@ -162,6 +162,60 @@ class DeltaGRU(nn.GRU):
 
         return x, x_p_0, h_0, h_p_0, dm_ch_0, dm_0
 
+    @staticmethod
+    @torch.jit.script
+    def compute_deltas(x: Tensor, x_p: Tensor, h: Tensor, h_p: Tensor, th_x: Tensor, th_h: Tensor):
+        delta_x = x - x_p
+        delta_h = h - h_p
+
+        delta_x_abs = torch.abs(delta_x)
+        delta_x = delta_x.masked_fill(delta_x_abs < th_x, 0)
+
+        delta_h_abs = torch.abs(delta_h)
+        delta_h = delta_h.masked_fill(delta_h_abs < th_h, 0)
+
+        return delta_x, delta_h, delta_x_abs, delta_h_abs
+
+    @staticmethod
+    @torch.jit.script
+    def update_states(delta_x_abs, delta_h_abs, x, h, x_p, h_p, x_prev_out, th_x, th_h):
+        # Update previous state vectors memory on indices that had above-threshold change
+        x_p = torch.where(delta_x_abs >= th_x, x, x_p)
+        x_prev_out[:, :x.size(-1)] = x_p
+        h_p = torch.where(delta_h_abs >= th_h, h, h_p)
+        return x_p, h_p, x_prev_out
+
+    @staticmethod
+    @torch.jit.script
+    def compute_gates_activation(dm_r: Tensor, dm_z: Tensor, dm_nh: Tensor, dm_n: Tensor, q_r: Tensor,
+                                 use_hardsigmoid: bool, use_hardtanh: bool):
+        pre_act_r = dm_r
+        pre_act_z = dm_z
+        gate_r = hardsigmoid(pre_act_r) if use_hardsigmoid else torch.sigmoid(pre_act_r)
+        gate_z = hardsigmoid(pre_act_z) if use_hardsigmoid else torch.sigmoid(pre_act_z)
+        q_r = q_r
+
+        pre_act_nh = dm_nh
+        pre_act_n = dm_n + torch.mul(q_r, pre_act_nh)
+        gate_n = F.hardtanh(pre_act_n) if use_hardtanh else torch.tanh(pre_act_n)
+
+        return gate_r, gate_z, gate_n
+
+    @staticmethod
+    @torch.jit.script
+    def compute_gates(delta_x: Tensor, delta_h: Tensor, dm: Tensor, dm_nh: Tensor, weight_ih: Tensor,
+                      weight_hh: Tensor):
+        mac_x = torch.mm(delta_x, weight_ih.t()) + dm
+        mac_h = torch.mm(delta_h, weight_hh.t())
+        mac_x_chunks = mac_x.chunk(3, dim=1)
+        mac_h_chunks = mac_h.chunk(3, dim=1)
+        dm_r = mac_x_chunks[0] + mac_h_chunks[0]
+        dm_z = mac_x_chunks[1] + mac_h_chunks[1]
+        dm_n = mac_x_chunks[2]
+        dm_nh = mac_h_chunks[2] + dm_nh
+        dm = torch.cat((dm_r, dm_z, dm_n), 1)
+        return dm, dm_r, dm_z, dm_n, dm_nh
+
     def layer_forward(self, input: Tensor, l: int, qa: int, x_p_0: Tensor = None, h_0: Tensor = None,
                       h_p_0: Tensor = None, dm_nh_0: Tensor = None, dm_0: Tensor = None):
         # Get Layer Parameters
@@ -196,7 +250,7 @@ class DeltaGRU(nn.GRU):
         h_p = quantize_tensor(h_p_0, self.aqi, self.aqf, qa)
         dm_nh = quantize_tensor(dm_nh_0, self.aqi, self.aqf, qa)
         dm = dm_0
-        l1_norm_delta_h = torch.zeros(1, dtype=input.dtype)  # Intialize L1 Norm of delta h
+        l1_norm_delta_h = torch.zeros(1, dtype=input.dtype, device=input.device)  # Intialize L1 Norm of delta h
 
         # Iterate through timesteps
         seq_len = len(inputs)
@@ -204,16 +258,7 @@ class DeltaGRU(nn.GRU):
             # Get current input vectors
             x = inputs[t]
 
-            # Get Delta Vectors
-            delta_x = x - x_p
-            delta_h = h - h_p
-
-            # Zero-out elements of delta vector below the threshold
-            delta_x_abs = torch.abs(delta_x)
-            delta_x = delta_x.masked_fill(delta_x_abs < th_x, 0)
-            delta_h_abs = torch.abs(delta_h)
-            delta_h = delta_h.masked_fill(delta_h_abs < th_h, 0)
-
+            delta_x, delta_h, delta_x_abs, delta_h_abs = self.compute_deltas(x, x_p, h, h_p, th_x, th_h)
             reg += torch.sum(torch.abs(delta_h))
 
             # if not self.training and self.debug:
@@ -225,24 +270,13 @@ class DeltaGRU(nn.GRU):
                 self.statistics["num_dx_numel"] += torch.numel(delta_x)
                 self.statistics["num_dh_numel"] += torch.numel(delta_h)
 
-            # Update previous state vectors memory on indices that had above-threshold change
-            x_p = torch.where(delta_x_abs >= self.th_x, x, x_p)
-            x_prev_out[:, :input.size(-1)] = x_p
-            h_p = torch.where(delta_h_abs >= self.th_h, h, h_p)
+            x_p, h_p, x_prev_out = self.update_states(delta_x_abs, delta_h_abs, x, h, x_p, h_p, x_prev_out, th_x, th_h)
 
             # Get l1 norm of delta_h
-            l1_norm_delta_h += torch.sum(torch.abs(delta_h.cpu()))
+            l1_norm_delta_h += torch.sum(torch.abs(delta_h))
 
             # Run forward pass for one time step
-            mac_x = torch.mm(delta_x, weight_ih.t()) + dm
-            mac_h = torch.mm(delta_h, weight_hh.t())
-            mac_x_chunks = mac_x.chunk(3, dim=1)
-            mac_h_chunks = mac_h.chunk(3, dim=1)
-            dm_r = mac_x_chunks[0] + mac_h_chunks[0]
-            dm_z = mac_x_chunks[1] + mac_h_chunks[1]
-            dm_n = mac_x_chunks[2]
-            dm_nh = mac_h_chunks[2] + dm_nh
-            dm = torch.cat((dm_r, dm_z, dm_n), 1)
+            dm, dm_r, dm_z, dm_n, dm_nh = self.compute_gates(delta_x, delta_h, dm, dm_nh, weight_ih, weight_hh)
 
             pre_act_r = quantize_tensor(dm_r, self.aqi, self.aqf, qa)
             pre_act_z = quantize_tensor(dm_z, self.aqi, self.aqf, qa)
